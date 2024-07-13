@@ -56,9 +56,6 @@ Desktop.ini
 *.tmp
 *.temp
 
-# 核心转储文件
-core
-
 # 特定于项目的可执行文件（可能需要根据您的项目调整）
 /unit_tests
 /benchmark_tcp_server
