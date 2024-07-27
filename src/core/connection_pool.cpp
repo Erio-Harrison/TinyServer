@@ -10,9 +10,9 @@ ConnectionPool::~ConnectionPool() {
 std::unique_ptr<Connection> ConnectionPool::get_connection() {
     std::unique_lock<std::mutex> lock(mutex_);
     
-    while (available_connections_.empty() && all_connections_.size() < max_connections_) {
+    if (available_connections_.empty() && all_connections_.size() < max_connections_) {
         all_connections_.push_back(connection_factory_());
-        available_connections_.push(all_connections_.back().get());
+        return std::unique_ptr<Connection>(all_connections_.back().release());
     }
 
     cv_.wait(lock, [this] { return !available_connections_.empty(); });
