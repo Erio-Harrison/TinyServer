@@ -64,3 +64,17 @@ Desktop.ini
 # 其他
 *.swp
 *~
+
+# Rust 特定的忽略项
+**/target/
+**/*.rs.bk
+**/Cargo.lock
+
+# 如果使用 nightly Rust
+**/rust-toolchain
+
+# 如果使用 rustfmt
+**/*.rs.fmt
+
+# 如果使用 clippy
+**/*.rs.clippy
