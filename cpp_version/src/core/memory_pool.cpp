@@ -31,12 +31,12 @@ void MemoryPool::deallocate(void* ptr) {
     free_list_ = block;
 }
 
-void MemoryPool::allocate_chunk() {
-    size_t chunk_size = block_size_ * 100;  // 每次分配100个块
+void MemoryPool::allocate_chunk(){
+    size_t chunk_size = block_size_ * 100;
     char* chunk = static_cast<char*>(std::malloc(chunk_size));
     chunks_.push_back(chunk);
 
-    for (size_t i = 0; i < chunk_size; i += block_size_) {
+    for(size_t i = 0; i< chunk_size; i+=block_size_){
         Block* block = reinterpret_cast<Block*>(chunk + i);
         block->next = free_list_;
         free_list_ = block;

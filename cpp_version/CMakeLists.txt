@@ -21,21 +21,21 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(benchmark)
 
 # 主项目源文件
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE SOURCES "cpp_version/src/*.cpp")
 add_library(HighPerformanceHub ${SOURCES})
-target_include_directories(HighPerformanceHub PUBLIC include)
+target_include_directories(HighPerformanceHub PUBLIC cpp_version/include)
 
 # 单元测试
 enable_testing()
-file(GLOB_RECURSE TEST_SOURCES "tests/*.cpp")
+file(GLOB_RECURSE TEST_SOURCES "cpp_version/tests/*.cpp")
 add_executable(unit_tests ${TEST_SOURCES})
 target_link_libraries(unit_tests HighPerformanceHub gtest gtest_main pthread)
 add_test(NAME unit_tests COMMAND unit_tests)
 
 # 性能测试
-add_executable(benchmark_tcp_server benchmarks/benchmark_tcp_server.cpp)
+add_executable(benchmark_tcp_server cpp_version/benchmarks/benchmark_tcp_server.cpp)
 target_link_libraries(benchmark_tcp_server HighPerformanceHub benchmark::benchmark pthread)
 
 # 示例应用
-add_executable(chat_server examples/chat_server.cpp)
+add_executable(chat_server cpp_version/examples/chat_server.cpp)
 target_link_libraries(chat_server HighPerformanceHub pthread)
