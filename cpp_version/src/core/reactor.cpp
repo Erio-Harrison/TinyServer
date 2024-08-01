@@ -28,11 +28,31 @@ void Reactor::add_handler(int fd, uint32_t events, std::function<void()> handler
 }
 
 void Reactor::remove_handler(int fd) {
-    if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) == -1) {
-        throw std::runtime_error("Failed to remove file descriptor from epoll");
+    auto it = handlers_.find(fd);
+    if (it == handlers_.end()) {
+        // 处理程序不在我们的映射中，可能已经被移除
+        return;
     }
 
-    handlers_.erase(fd);
+    if (epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) == -1) {
+        if (errno == EBADF) {
+            // 文件描述符无效，可能已经被关闭
+            // 我们只需要从 handlers_ 中移除它
+            handlers_.erase(it);
+        } else if (errno == ENOENT) {
+            // 文件描述符不在 epoll 实例中
+            // 这是一个意外情况，因为它在我们的 handlers_ 中
+            // 我们应该记录这个情况，但仍然从 handlers_ 中移除它
+            std::cerr << "Warning: File descriptor " << fd << " not found in epoll instance\n";
+            handlers_.erase(it);
+        } else {
+            // 其他错误，可能需要更严重的处理
+            throw std::runtime_error("Failed to remove file descriptor from epoll: ");
+        }
+    } else {
+        // 成功从 epoll 实例中移除，现在从 handlers_ 中移除
+        handlers_.erase(it);
+    }
 }
 
 void Reactor::run() {
