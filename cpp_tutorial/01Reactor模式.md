@@ -39,7 +39,7 @@ IOCP（I/O Completion Ports）：一种高效的I/O完成端口机制，适合�
 
 来看`Reactor`类的实现，我们会先看简单的实现方式：
 
-我们会用`int epoll_fd_`来表示文件描述符，用`bool running_`来代表这个类是否正在工作，`std::unordered_map<int, std::function<void()>> handlers_`：每一个文件描述符会对应一个处理函数（用于处理事件）,`std::vector<struct epoll_event> events_`。
+我们会用`int epoll_fd_`来表示文件描述符，用`bool running_`来代表这个类是否正在工作，`std::unordered_map<int, std::function<void(uint32_t)>> handlers_`：每一个文件描述符会对应一个处理函数（用于处理事件）,`std::vector<struct epoll_event> events_`。
 
 在初始化的时候，会创建epoll实例，假如创建失败，则throw错误
 
@@ -59,10 +59,10 @@ Reactor::~Reactor() {
 }
 ```
 
-我们会用`void add_handler(int fd, uint32_t events, std::function<void()> handler);`添加一个文件描述符和对应的处理函数，整个过程很简单，三歩：1.创建 epoll_event 结构体，设置事件类型和文件描述符。2.使用 epoll_ctl 将文件描述符添加到 epoll 实例。3.将处理函数存储在 handlers_ 映射中：
+我们会用`void add_handler(int fd, uint32_t events, std::function<void(uint32_t)> handler);`添加一个文件描述符和对应的处理函数，整个过程很简单，三歩：1.创建 epoll_event 结构体，设置事件类型和文件描述符。2.使用 epoll_ctl 将文件描述符添加到 epoll 实例。3.将处理函数存储在 handlers_ 映射中：
 
 ```bash
-void Reactor::add_handler(int fd, uint32_t events, std::function<void()> handler) {
+void Reactor::add_handler(int fd, uint32_t events, std::function<void(uint32_t)> handler) {
     epoll_event ev;
     ev.events = events;
     ev.data.fd = fd;
@@ -123,7 +123,7 @@ void Reactor::run() {
             int fd = events_[n].data.fd;
             auto it = handlers_.find(fd);
             if (it != handlers_.end()) {
-                it->second();  // 调用处理函数
+                it->second(events_[n].events);  // 调用处理函数
             }
         }
     }

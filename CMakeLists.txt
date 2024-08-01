@@ -37,5 +37,3 @@ add_executable(benchmark_tcp_server cpp_version/benchmarks/benchmark_tcp_server.
 target_link_libraries(benchmark_tcp_server HighPerformanceHub benchmark::benchmark pthread)
 
 # 示例应用
-add_executable(chat_server cpp_version/examples/chat_server.cpp)
-target_link_libraries(chat_server HighPerformanceHub pthread)

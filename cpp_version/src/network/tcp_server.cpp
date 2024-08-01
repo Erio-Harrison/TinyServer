@@ -36,7 +36,7 @@ TcpServer::TcpServer(Reactor& reactor, const std::string& ip, int port)
         throw std::runtime_error("Failed to listen on socket");
     }
 
-    // 设置非阻塞模式
+    // 把我们的服务端设置为非阻塞模式
     int flags = fcntl(server_fd_, F_GETFL, 0);
     fcntl(server_fd_, F_SETFL, flags | O_NONBLOCK);
 }
@@ -50,18 +50,14 @@ TcpServer::~TcpServer() {
 
 void TcpServer::start() {
     running_ = true;
-    reactor_.add_handler(server_fd_, EPOLLIN, [this]() { 
-        accept_connection(); 
+    reactor_.add_handler(server_fd_, EPOLLIN, [this](uint32_t events) {
+        accept_connection();
     });
 }
 
 void TcpServer::stop() {
     running_ = false;
     reactor_.remove_handler(server_fd_);
-}
-
-void TcpServer::set_connection_handler(std::function<void(int)> handler) {
-    connection_handler_ = std::move(handler);
 }
 
 void TcpServer::set_receive_handler(std::function<void(int, const char*, size_t)> handler) {
@@ -72,32 +68,16 @@ void TcpServer::send(int client_fd, const char* data, size_t len) {
     ::send(client_fd, data, len, 0);
 }
 
-
 void TcpServer::handle_close(int client_fd) {
     reactor_.remove_handler(client_fd);
     close(client_fd);
-    if (connection_handler_) {
-        connection_handler_(-client_fd);  // 使用负值表示连接关闭
-    }
-}
-
-void TcpServer::handle_client(int client_fd) {
-    epoll_event ev;
-    epoll_wait(reactor_.get_epoll_fd(), &ev, 1, 0);
-    
-    if (ev.events & EPOLLIN) {
-        handle_read(client_fd);
-    }
-    if (ev.events & (EPOLLRDHUP | EPOLLHUP)) {
-        handle_close(client_fd);
-    }
 }
 
 void TcpServer::accept_connection() {
     sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
     int client_fd = accept(server_fd_, (struct sockaddr*)&client_addr, &client_len);
-    
+
     if (client_fd == -1) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             std::cerr << "Failed to accept connection" << std::endl;
@@ -105,17 +85,18 @@ void TcpServer::accept_connection() {
         return;
     }
 
-    // 设置客户端socket为非阻塞
+    // 为客户端的socket设置非阻塞
     int flags = fcntl(client_fd, F_GETFL, 0);
     fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
 
-    reactor_.add_handler(client_fd, EPOLLIN | EPOLLRDHUP, [this, client_fd]() { 
-        handle_client(client_fd);
+    reactor_.add_handler(client_fd, EPOLLIN | EPOLLRDHUP, [this, client_fd](uint32_t events) {
+        if (events & EPOLLIN) {
+            handle_read(client_fd);
+        }
+        if (events & (EPOLLRDHUP | EPOLLHUP)) {
+            handle_close(client_fd);
+        }
     });
-
-    if (connection_handler_) {
-        connection_handler_(client_fd);
-    }
 }
 
 void TcpServer::handle_read(int client_fd) {

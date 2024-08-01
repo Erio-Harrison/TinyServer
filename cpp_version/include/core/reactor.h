@@ -11,7 +11,7 @@ public:
     ~Reactor();
 
     // 添加一个文件描述符和对应的处理函数
-    void add_handler(int fd, uint32_t events, std::function<void()> handler);
+    void add_handler(int fd, uint32_t events, std::function<void(uint32_t)> handler);
 
     // 移除一个文件描述符的处理
     void remove_handler(int fd);
@@ -27,7 +27,7 @@ public:
 private:
     int epoll_fd_;
     bool running_;
-    std::unordered_map<int, std::function<void()>> handlers_;
+    std::unordered_map<int, std::function<void(uint32_t)>> handlers_;
     std::vector<struct epoll_event> events_;
 
     static constexpr int MAX_EVENTS = 10;

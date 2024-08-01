@@ -15,7 +15,7 @@ Reactor::~Reactor() {
     close(epoll_fd_);
 }
 
-void Reactor::add_handler(int fd, uint32_t events, std::function<void()> handler) {
+void Reactor::add_handler(int fd, uint32_t events, std::function<void(uint32_t)> handler) {
     epoll_event ev;
     ev.events = events;
     ev.data.fd = fd;
@@ -68,7 +68,7 @@ void Reactor::run() {
             int fd = events_[n].data.fd;
             auto it = handlers_.find(fd);
             if (it != handlers_.end()) {
-                it->second();  // 调用处理函数
+                it->second(events_[n].events);  // 调用处理函数
             }
         }
     }
