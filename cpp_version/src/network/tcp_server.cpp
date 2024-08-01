@@ -22,9 +22,9 @@ TcpServer::TcpServer(Reactor& reactor, const std::string& ip, int port)
     }
 
     sockaddr_in address;
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;  // 或者使用 inet_pton() 转换 ip_
-    address.sin_port = htons(port_);
+    address.sin_family = AF_INET; // 设置地址族为 IPv4（AF_INET）。
+    address.sin_addr.s_addr = INADDR_ANY;  // 这行代码是用来设置服务器监听的 IP 地址，INADDR_ANY表示服务器将在所有可用的网络接口上监听。
+    address.sin_port = htons(port_); // 将端口号转换为网络字节序。
 
     if (bind(server_fd_, (struct sockaddr*)&address, sizeof(address)) == -1) {
         close(server_fd_);

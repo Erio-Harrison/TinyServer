@@ -1,5 +1,4 @@
 #pragma once
-
 #include "core/reactor.h"
 #include <string>
 #include <functional>
@@ -11,9 +10,6 @@ public:
 
     void start();
     void stop();
-
-    // 设置新连接处理函数
-    void set_connection_handler(std::function<void(int)> handler);
     
     // 设置数据接收处理函数
     void set_receive_handler(std::function<void(int, const char*, size_t)> handler);
