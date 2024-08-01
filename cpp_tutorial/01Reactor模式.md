@@ -37,7 +37,7 @@ IOCP（I/O Completion Ports）：一种高效的I/O完成端口机制，适合�
 
 6. 错误处理：检查系统调用的返回值，如果为 -1 表示出错，使用 `errno` 获取具体的错误信息
 
-来看`Reactor`类的实现：
+来看`Reactor`类的实现，我们会先看简单的实现方式：
 
 我们会用`int epoll_fd_`来表示文件描述符，用`bool running_`来代表这个类是否正在工作，`std::unordered_map<int, std::function<void()>> handlers_`：每一个文件描述符会对应一个处理函数（用于处理事件）,`std::vector<struct epoll_event> events_`。
 
@@ -87,6 +87,35 @@ void Reactor::remove_handler(int fd) {
 }
 ```
 
-在`Reactor`模式下，会启动一个线程持续监听并且进行相应函数的处理操作，线程启动的时候首先会把running_变为true。然后进入while循环，`int nfds = epoll_wait(epoll_fd_, events_.data(), MAX_EVENTS, -1);`是关键，它会阻塞等待直到事件发生。`int nfds = epoll_wait(epoll_fd_, events_.data(), MAX_EVENTS, -1);`里nfds返回准备好的文件描述符数量，如果它等于-1则表示出错了。这里特别处理了 EINTR 错误（被信号中断），如果是这种情况，就继续循环。其他错误则抛出异常。
+在`Reactor`模式下，会启动一个线程持续监听并且进行相应函数的处理操作，线程启动的时候首先会把running_变为true。然后进入while循环，`int nfds = epoll_wait(epoll_fd_, events_.data(), MAX_EVENTS, -1);`是关键，它会阻塞等待直到事件发生。`int nfds = epoll_wait(epoll_fd_, events_.data(), MAX_EVENTS, -1);`会把事件填充进events数组。nfds是准备好的文件描述符数量，如果它等于-1则表示出错了。这里特别处理了 EINTR 错误（被信号中断），如果是这种情况，就继续循环。其他错误则抛出异常。对于每个事件，我们获取每个文件描述符的fd，在handlers_映射里查找对应的函数，如果找到了，就运行它：
 
+```bash
+void Reactor::run() {
+    running_ = true;
+    while (running_) {
+        int nfds = epoll_wait(epoll_fd_, events_.data(), MAX_EVENTS, -1);
+        if (nfds == -1) {
+            if (errno == EINTR) continue;  // 被信号中断，继续循环
+            throw std::runtime_error("epoll_wait failed");
+        }
 
+        for (int n = 0; n < nfds; ++n) {
+            int fd = events_[n].data.fd;
+            auto it = handlers_.find(fd);
+            if (it != handlers_.end()) {
+                it->second();  // 调用处理函数
+            }
+        }
+    }
+}
+```
+
+线程关闭的话就是把running_变为false：
+
+```bash
+void Reactor::stop() {
+    running_ = false;
+}
+```
+
+结合线程池优化的思路也很简单，我们只需要在Reactor类当中建一个线程池类，然后使用线程池去处理函数（这部分感兴趣的朋友可以做个优化，理解线程池之后，实现起来会非常简单）。
