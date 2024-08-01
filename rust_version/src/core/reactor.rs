@@ -3,33 +3,37 @@ use std::collections::HashMap;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::ptr;
+use std::sync::{Arc, Mutex};
+use threadpool::ThreadPool;
 
 const MAX_EVENTS: usize = 1024;
 
 pub struct Reactor {
     epoll_fd: RawFd,
-    handlers: HashMap<RawFd, Box<dyn FnMut() -> io::Result<()>>>,
+    handlers: Arc<Mutex<HashMap<RawFd, Box<dyn FnMut() -> io::Result<()> + Send>>>>,
     events: Vec<libc::epoll_event>,
     running: bool,
+    thread_pool: ThreadPool,
 }
 
 impl Reactor {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(num_threads: usize) -> io::Result<Self> {
         let epoll_fd = unsafe { libc::epoll_create1(0) };
         if epoll_fd < 0 {
             return Err(io::Error::last_os_error());
         }
         Ok(Reactor {
             epoll_fd,
-            handlers: HashMap::new(),
+            handlers: Arc::new(Mutex::new(HashMap::new())),
             events: vec![libc::epoll_event { events: 0, u64: 0 }; MAX_EVENTS],
             running: false,
+            thread_pool: ThreadPool::new(num_threads),
         })
     }
 
     pub fn add_handler<F>(&mut self, fd: RawFd, handler: F) -> io::Result<()>
     where
-        F: FnMut() -> io::Result<()> + 'static,
+        F: FnMut() -> io::Result<()> + Send + 'static,
     {
         let mut event = libc::epoll_event {
             events: libc::EPOLLIN as u32,
@@ -46,7 +50,7 @@ impl Reactor {
         if res < 0 {
             return Err(io::Error::last_os_error());
         }
-        self.handlers.insert(fd, Box::new(handler));
+        self.handlers.lock().unwrap().insert(fd, Box::new(handler));
         Ok(())
     }
 
@@ -55,7 +59,7 @@ impl Reactor {
         if res < 0 {
             return Err(io::Error::last_os_error());
         }
-        self.handlers.remove(&fd);
+        self.handlers.lock().unwrap().remove(&fd);
         Ok(())
     }
 
@@ -80,9 +84,14 @@ impl Reactor {
             for i in 0..nfds {
                 let event = unsafe { self.events.get_unchecked(i as usize) };
                 let fd = event.u64 as RawFd;
-                if let Some(handler) = self.handlers.get_mut(&fd) {
-                    handler()?;
-                }
+                let handlers = Arc::clone(&self.handlers);
+                self.thread_pool.execute(move || {
+                    if let Some(handler) = handlers.lock().unwrap().get_mut(&fd) {
+                        if let Err(e) = handler() {
+                            eprintln!("Handler error: {:?}", e);
+                        }
+                    }
+                });
             }
         }
         Ok(())

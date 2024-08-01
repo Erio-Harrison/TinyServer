@@ -12,7 +12,8 @@ thiserror = "1.0.40"
 byteorder = "1.4"
 chrono = "0.4"
 parking_lot = "0.12"
-
+libc = "0.2"
+threadpool = "1.8"
 
 [dev-dependencies]
 criterion = "0.3"
