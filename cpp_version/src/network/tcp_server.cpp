@@ -1,5 +1,6 @@
 #include "network/tcp_server.h"
 #include <sys/socket.h>
+#include <sys/epoll.h>
 #include <netinet/in.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -49,7 +50,9 @@ TcpServer::~TcpServer() {
 
 void TcpServer::start() {
     running_ = true;
-    reactor_.add_handler(server_fd_, [this]() { accept_connection(); });
+    reactor_.add_handler(server_fd_, EPOLLIN, [this]() { 
+        accept_connection(); 
+    });
 }
 
 void TcpServer::stop() {
@@ -69,6 +72,27 @@ void TcpServer::send(int client_fd, const char* data, size_t len) {
     ::send(client_fd, data, len, 0);
 }
 
+
+void TcpServer::handle_close(int client_fd) {
+    reactor_.remove_handler(client_fd);
+    close(client_fd);
+    if (connection_handler_) {
+        connection_handler_(-client_fd);  // 使用负值表示连接关闭
+    }
+}
+
+void TcpServer::handle_client(int client_fd) {
+    epoll_event ev;
+    epoll_wait(reactor_.get_epoll_fd(), &ev, 1, 0);
+    
+    if (ev.events & EPOLLIN) {
+        handle_read(client_fd);
+    }
+    if (ev.events & (EPOLLRDHUP | EPOLLHUP)) {
+        handle_close(client_fd);
+    }
+}
+
 void TcpServer::accept_connection() {
     sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
@@ -85,7 +109,9 @@ void TcpServer::accept_connection() {
     int flags = fcntl(client_fd, F_GETFL, 0);
     fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
 
-    reactor_.add_handler(client_fd, [this, client_fd]() { handle_read(client_fd); });
+    reactor_.add_handler(client_fd, EPOLLIN | EPOLLRDHUP, [this, client_fd]() { 
+        handle_client(client_fd);
+    });
 
     if (connection_handler_) {
         connection_handler_(client_fd);
@@ -101,11 +127,6 @@ void TcpServer::handle_read(int client_fd) {
             receive_handler_(client_fd, buffer, bytes_read);
         }
     } else if (bytes_read == 0 || (bytes_read == -1 && errno != EAGAIN)) {
-        // 连接关闭或发生错误
-        reactor_.remove_handler(client_fd);
-        close(client_fd);
-        if (connection_handler_) {
-            connection_handler_(-client_fd);  // 使用负值表示连接关闭
-        }
+        handle_close(client_fd);
     }
 }

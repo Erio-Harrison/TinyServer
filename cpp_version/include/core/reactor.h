@@ -11,7 +11,7 @@ public:
     ~Reactor();
 
     // 添加一个文件描述符和对应的处理函数
-    void add_handler(int fd, std::function<void()> handler);
+    void add_handler(int fd, uint32_t events, std::function<void()> handler);
 
     // 移除一个文件描述符的处理
     void remove_handler(int fd);
@@ -21,6 +21,8 @@ public:
 
     // 停止事件循环
     void stop();
+
+    int get_epoll_fd();
 
 private:
     int epoll_fd_;

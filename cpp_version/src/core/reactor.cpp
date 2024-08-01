@@ -15,9 +15,9 @@ Reactor::~Reactor() {
     close(epoll_fd_);
 }
 
-void Reactor::add_handler(int fd, std::function<void()> handler) {
+void Reactor::add_handler(int fd, uint32_t events, std::function<void()> handler) {
     epoll_event ev;
-    ev.events = EPOLLIN;
+    ev.events = events;
     ev.data.fd = fd;
 
     if (epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &ev) == -1) {
@@ -56,4 +56,8 @@ void Reactor::run() {
 
 void Reactor::stop() {
     running_ = false;
+}
+int Reactor::get_epoll_fd()
+{
+    return epoll_fd_;
 }

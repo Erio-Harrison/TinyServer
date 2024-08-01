@@ -22,6 +22,10 @@ public:
     // 向客户端发送消息
     void send(int client_fd, const char* data, size_t len);
 
+    void handle_close(int client_fd);
+
+    void handle_client(int client_fd);
+
 private:
     void accept_connection();
     void handle_read(int client_fd);

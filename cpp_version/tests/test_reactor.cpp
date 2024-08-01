@@ -1,5 +1,6 @@
 #include "gtest/gtest.h"
 #include "core/reactor.h"
+#include <sys/epoll.h>
 #include <thread>
 #include <chrono>
 #include <unistd.h> 
@@ -10,7 +11,7 @@ TEST(ReactorTest, BasicFunctionality) {
     ASSERT_EQ(pipe(pipe_fds), 0);
 
     bool handler_called = false;
-    reactor.add_handler(pipe_fds[0], [&handler_called, &reactor, &pipe_fds]() {
+    reactor.add_handler(pipe_fds[0], EPOLLIN, [&handler_called, &reactor, &pipe_fds]() {
         char buf[1];
         read(pipe_fds[0], buf, 1);
         handler_called = true;
