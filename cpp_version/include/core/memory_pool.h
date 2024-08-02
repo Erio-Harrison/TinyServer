@@ -20,6 +20,7 @@ private:
     size_t block_size_;
     Block* free_list_;
     std::vector<char*> chunks_;
+    size_t blocks_per_chunk_;
     std::mutex mutex_;
 
     void allocate_chunk();

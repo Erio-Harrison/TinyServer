@@ -3,7 +3,9 @@
 #include <algorithm>
 
 MemoryPool::MemoryPool(size_t block_size, size_t initial_blocks)
-    : block_size_(std::max(block_size, sizeof(Block))), free_list_(nullptr) {
+    : block_size_(std::max(block_size, sizeof(Block))), 
+      blocks_per_chunk_(initial_blocks),free_list_(nullptr) 
+{
     allocate_chunk();
 }
 
@@ -32,7 +34,7 @@ void MemoryPool::deallocate(void* ptr) {
 }
 
 void MemoryPool::allocate_chunk(){
-    size_t chunk_size = block_size_ * 100;
+    size_t chunk_size = block_size_ * blocks_per_chunk_;
     char* chunk = static_cast<char*>(std::malloc(chunk_size));
     chunks_.push_back(chunk);
 
