@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(HighPerformanceHub)
+project(TinyServer)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -22,18 +22,18 @@ FetchContent_MakeAvailable(benchmark)
 
 # 主项目源文件
 file(GLOB_RECURSE SOURCES "cpp_version/src/*.cpp")
-add_library(HighPerformanceHub ${SOURCES})
-target_include_directories(HighPerformanceHub PUBLIC cpp_version/include)
+add_library(TinyServer ${SOURCES})
+target_include_directories(TinyServer PUBLIC cpp_version/include)
 
 # 单元测试
 enable_testing()
 file(GLOB_RECURSE TEST_SOURCES "cpp_version/tests/*.cpp")
 add_executable(unit_tests ${TEST_SOURCES})
-target_link_libraries(unit_tests HighPerformanceHub gtest gtest_main pthread)
+target_link_libraries(unit_tests TinyServer gtest gtest_main pthread)
 add_test(NAME unit_tests COMMAND unit_tests)
 
 # 性能测试
 add_executable(benchmark_tcp_server cpp_version/benchmarks/benchmark_tcp_server.cpp)
-target_link_libraries(benchmark_tcp_server HighPerformanceHub benchmark::benchmark pthread)
+target_link_libraries(benchmark_tcp_server TinyServer benchmark::benchmark pthread)
 
 # 示例应用
