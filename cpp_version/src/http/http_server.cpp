@@ -27,7 +27,6 @@ HttpServer::HttpServer(Reactor& reactor, const std::string& ip, int port, MySQLD
         handle_request(client_fd, data, len);
     });
 
-    // 设置路由
     route_handlers_["/"] = [this](const HttpRequest& req) { return "Hello, World!"; };
     route_handlers_["/register"] = [this](const HttpRequest& req) { return handle_register(req); };
     route_handlers_["/login"] = [this](const HttpRequest& req) { return handle_login(req); };
