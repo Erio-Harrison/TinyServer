@@ -10,6 +10,7 @@
 class Connection {
 public:
     Connection(int fd) : fd_(fd) {}
+    virtual ~Connection() = default;
     int fd() const { return fd_; }
     // 可以添加其他连接相关的方法
 

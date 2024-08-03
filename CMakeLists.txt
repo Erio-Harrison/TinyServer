@@ -36,4 +36,6 @@ add_test(NAME unit_tests COMMAND unit_tests)
 add_executable(benchmark_tcp_server cpp_version/benchmarks/benchmark_tcp_server.cpp)
 target_link_libraries(benchmark_tcp_server TinyServer benchmark::benchmark pthread)
 
-# 示例应用
+# 示例应用(http_server)
+add_executable(http_server cpp_version/examples/http_server.cpp)
+target_link_libraries(http_server TinyServer pthread)

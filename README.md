@@ -91,13 +91,6 @@ make
 ./benchmark_tcp_server
 ```
 
-聊天服务器示例:
-
-```bash
-./chat_server
-```
-
-
 9. 优化性能，处理边缘情况。
 
 
