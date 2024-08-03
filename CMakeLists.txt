@@ -20,10 +20,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(benchmark)
 
+# MySQL 配置
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/")
+find_package(MySQL REQUIRED)
+if(NOT MySQL_FOUND)
+    message(FATAL_ERROR "MySQL not found. Please install MySQL development libraries.")
+endif()
+
+# 定义头文件目录
+set(HEADER_DIR ${CMAKE_SOURCE_DIR}/cpp_version/include)
+
 # 主项目源文件
 file(GLOB_RECURSE SOURCES "cpp_version/src/*.cpp")
 add_library(TinyServer ${SOURCES})
-target_include_directories(TinyServer PUBLIC cpp_version/include)
+target_include_directories(TinyServer PUBLIC ${HEADER_DIR} ${MySQL_INCLUDE_DIRS})
+target_link_libraries(TinyServer ${MySQL_LIBRARIES})
 
 # 单元测试
 enable_testing()
@@ -37,5 +48,10 @@ add_executable(benchmark_tcp_server cpp_version/benchmarks/benchmark_tcp_server.
 target_link_libraries(benchmark_tcp_server TinyServer benchmark::benchmark pthread)
 
 # 示例应用(http_server)
-add_executable(http_server cpp_version/examples/http_server.cpp)
-target_link_libraries(http_server TinyServer pthread)
+add_executable(http_server cpp_version/src/http/http_server.cpp)
+target_link_libraries(http_server 
+    TinyServer 
+    pthread 
+    ${MySQL_LIBRARIES}
+)
+target_include_directories(http_server PRIVATE ${HEADER_DIR} ${MySQL_INCLUDE_DIRS})

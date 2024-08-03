@@ -25,72 +25,61 @@
 数据库的连接是继承自`Connection`类的，结合我们特定的MySQL API来实现：
 
 ```bash
-class MySQLConnection : public Connection {
-public:
-    MySQLConnection(const std::string& host, const std::string& user, const std::string& password, const std::string& database)
-        : Connection(-1), mysql_(nullptr) {
-        mysql_ = mysql_init(nullptr);
-        if (!mysql_) {
-            throw std::runtime_error("MySQL init failed");
-        }
-        if (!mysql_real_connect(mysql_, host.c_str(), user.c_str(), password.c_str(), database.c_str(), 0, nullptr, 0)) {
-            throw std::runtime_error(mysql_error(mysql_));
-        }
+MySQLConnection::MySQLConnection(const std::string& host, const std::string& user, const std::string& password, const std::string& database)
+    : Connection(-1), mysql_(nullptr) {
+    mysql_ = mysql_init(nullptr);
+    if (!mysql_) {
+        throw std::runtime_error("MySQL init failed");
     }
-
-    ~MySQLConnection() override {
-        if (mysql_) {
-            mysql_close(mysql_);
-        }
+    if (!mysql_real_connect(mysql_, host.c_str(), user.c_str(), password.c_str(), database.c_str(), 0, nullptr, 0)) {
+        throw std::runtime_error(mysql_error(mysql_));
     }
+}
 
-    MYSQL* get_mysql() { return mysql_; }
+MySQLConnection::~MySQLConnection() {
+    if (mysql_) {
+        mysql_close(mysql_);
+    }
+}
 
-private:
-    MYSQL* mysql_;
-};
+MYSQL* MySQLConnection::get_mysql() { 
+    return mysql_; 
+}
+
 ```
 
 另外一个类用来管理我们的数据库，数据库管理类里连接池和内存池就是它的成员变量，建立连接和释放连接，分配内存和释放内存都可以通过封装好的连接池和内存池完成：
 
 ```bash
-class MySQLDatabaseManager {
-public:
-    MySQLDatabaseManager(const std::string& host, const std::string& user, const std::string& password, const std::string& database, size_t max_connections)
-        : connection_pool_(max_connections, [&]() {
-              return std::make_unique<MySQLConnection>(host, user, password, database);
-          }),
-          memory_pool_(1024, 100) // 使用1KB的块大小和初始100个块
-    {
-    }
+MySQLDatabaseManager::MySQLDatabaseManager(const std::string& host, const std::string& user, const std::string& password, const std::string& database, size_t max_connections)
+    : connection_pool_(max_connections, [&]() {
+          return std::make_unique<MySQLConnection>(host, user, password, database);
+      }),
+      memory_pool_(1024, 100) // 使用1KB的块大小和初始100个块
+{
+}
 
-    std::unique_ptr<MySQLConnection> get_connection() {
-        auto conn = connection_pool_.get_connection();
-        return std::unique_ptr<MySQLConnection>(static_cast<MySQLConnection*>(conn.release()));
-    }
+std::unique_ptr<MySQLConnection> MySQLDatabaseManager::get_connection() {
+    auto conn = connection_pool_.get_connection();
+    return std::unique_ptr<MySQLConnection>(static_cast<MySQLConnection*>(conn.release()));
+}
 
-    void release_connection(std::unique_ptr<MySQLConnection> conn) {
-        connection_pool_.release_connection(std::move(conn));
-    }
+void MySQLDatabaseManager::release_connection(std::unique_ptr<MySQLConnection> conn) {
+    connection_pool_.release_connection(std::move(conn));
+}
 
-    void* allocate_memory() {
-        return memory_pool_.allocate();
-    }
+void* MySQLDatabaseManager::allocate_memory() {
+    return memory_pool_.allocate();
+}
 
-    void deallocate_memory(void* ptr) {
-        memory_pool_.deallocate(ptr);
-    }
+void MySQLDatabaseManager::deallocate_memory(void* ptr) {
+    memory_pool_.deallocate(ptr);
+}
 
-    // 示例查询方法
-    bool execute_query(const std::string& query) {
-        auto conn = get_connection();
-        int result = mysql_query(conn->get_mysql(), query.c_str());
-        release_connection(std::move(conn));
-        return result == 0;
-    }
-
-private:
-    ConnectionPool connection_pool_;
-    MemoryPool memory_pool_;
-};
+bool MySQLDatabaseManager::execute_query(const std::string& query) {
+    auto conn = get_connection();
+    int result = mysql_query(conn->get_mysql(), query.c_str());
+    release_connection(std::move(conn));
+    return result == 0;
+}
 ```
