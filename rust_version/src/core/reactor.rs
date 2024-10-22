@@ -1,109 +1,146 @@
-// src/reactor.rs
 use std::collections::HashMap;
-use std::io;
+use std::io::{Error, Result};
 use std::os::unix::io::RawFd;
-use std::ptr;
-use std::sync::{Arc, Mutex};
-use threadpool::ThreadPool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-const MAX_EVENTS: usize = 1024;
+const MAX_EVENTS : usize = 10;
 
-pub struct Reactor {
-    epoll_fd: RawFd,
-    handlers: Arc<Mutex<HashMap<RawFd, Box<dyn FnMut() -> io::Result<()> + Send>>>>,
-    events: Vec<libc::epoll_event>,
-    running: bool,
-    thread_pool: ThreadPool,
+pub struct Reactor{
+    epoll_fd : RawFd,
+    running : AtomicBool,
+    handlers: HashMap<RawFd, Box<dyn FnMut(u32) + Send>>,
 }
 
-impl Reactor {
-    pub fn new(num_threads: usize) -> io::Result<Self> {
-        let epoll_fd = unsafe { libc::epoll_create1(0) };
-        if epoll_fd < 0 {
-            return Err(io::Error::last_os_error());
+impl Reactor{
+    pub fn new() -> Result<Self> {
+        let epoll_fd = unsafe { libc ::epoll_create1(0)};
+        if epoll_fd == -1 {
+            return Err(Error::last_os_error());
         }
-        Ok(Reactor {
-            epoll_fd,
-            handlers: Arc::new(Mutex::new(HashMap::new())),
-            events: vec![libc::epoll_event { events: 0, u64: 0 }; MAX_EVENTS],
-            running: false,
-            thread_pool: ThreadPool::new(num_threads),
-        })
+
+        Ok(
+            Reactor { 
+            epoll_fd, 
+            running: AtomicBool::new(false), 
+            handlers:HashMap::new() 
+            }
+        )
     }
 
-    pub fn add_handler<F>(&mut self, fd: RawFd, handler: F) -> io::Result<()>
+    pub fn add_handler<F>(&mut self, fd: RawFd, events: u32, handler: F) -> Result<()>
     where
-        F: FnMut() -> io::Result<()> + Send + 'static,
+        F: FnMut(u32) + Send + 'static,
     {
-        let mut event = libc::epoll_event {
-            events: libc::EPOLLIN as u32,
+        let mut ev = libc::epoll_event{
+            events : events as u32,
             u64: fd as u64,
         };
-        let res = unsafe {
+
+        let result = unsafe{
             libc::epoll_ctl(
                 self.epoll_fd,
                 libc::EPOLL_CTL_ADD,
                 fd,
-                &mut event as *mut libc::epoll_event,
+                &mut ev as *mut libc::epoll_event,
             )
         };
-        if res < 0 {
-            return Err(io::Error::last_os_error());
+
+        if result == -1 {
+            return Err(Error::last_os_error());
         }
-        self.handlers.lock().unwrap().insert(fd, Box::new(handler));
+        
+        self.handlers.insert(fd, Box::new(handler));
+
         Ok(())
     }
 
-    pub fn remove_handler(&mut self, fd: RawFd) -> io::Result<()> {
-        let res = unsafe { libc::epoll_ctl(self.epoll_fd, libc::EPOLL_CTL_DEL, fd, ptr::null_mut()) };
-        if res < 0 {
-            return Err(io::Error::last_os_error());
+    pub fn remove_handler(&mut self, fd: RawFd) -> Result<()> {
+        if !self.handlers.contains_key(&fd){
+            return Ok(());
         }
-        self.handlers.lock().unwrap().remove(&fd);
-        Ok(())
+
+        let result = unsafe {
+            libc::epoll_ctl(
+                self.epoll_fd,
+                libc::EPOLL_CTL_DEL,
+                fd,
+                std::ptr::null_mut()
+            )
+        };
+
+        match result {
+            -1 => {
+                let err = Error::last_os_error();
+                match err.raw_os_error() {
+                    Some(libc::EBADF) => {
+                        self.handlers.remove(&fd);
+                        Ok(())
+                    }
+
+                    Some(libc::ENOENT) => {
+                        eprintln!("Warning: File descriptor {} not found in epoll instance", fd);
+                        self.handlers.remove(&fd);
+                        Ok(())
+                    }
+                    _ => Err(err)
+                }
+            }
+            _ => {
+                self.handlers.remove(&fd);
+                Ok(())
+            }
+        }
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
-        self.running = true;
-        while self.running {
+    pub fn run(&mut self) -> Result<()> {
+        let mut events = vec![
+            libc::epoll_event { events: 0, u64: 0};
+            MAX_EVENTS
+        ];
+
+        self.running.store(true,Ordering::SeqCst);
+
+        while self.running.load(Ordering::SeqCst) {
             let nfds = unsafe {
-                libc::epoll_wait(
+                libc:: epoll_wait(
                     self.epoll_fd,
-                    self.events.as_mut_ptr(),
+                    events.as_mut_ptr(),
                     MAX_EVENTS as i32,
                     -1,
                 )
             };
-            if nfds < 0 {
-                let err = io::Error::last_os_error();
-                if err.kind() == io::ErrorKind::Interrupted {
+
+            if nfds == -1 {
+                let err = Error::last_os_error();
+                if err.raw_os_error() == Some(libc::EINTR) {
                     continue;
                 }
                 return Err(err);
             }
-            for i in 0..nfds {
-                let event = unsafe { self.events.get_unchecked(i as usize) };
-                let fd = event.u64 as RawFd;
-                let handlers = Arc::clone(&self.handlers);
-                self.thread_pool.execute(move || {
-                    if let Some(handler) = handlers.lock().unwrap().get_mut(&fd) {
-                        if let Err(e) = handler() {
-                            eprintln!("Handler error: {:?}", e);
-                        }
-                    }
-                });
+
+            for n in 0..nfds {
+                let fd = events[n as usize].u64 as RawFd;
+                if let Some(handler) = self.handlers.get_mut(&fd){
+                    handler(events[n as usize].events);
+                }
             }
         }
         Ok(())
     }
 
-    pub fn stop(&mut self) {
-        self.running = false;
+    pub fn stop(&self) {
+        self.running.store(false, Ordering::SeqCst);
     }
+
+    pub fn get_epoll_fd(&self) -> RawFd {
+        self.epoll_fd
+    }  
 }
 
-impl Drop for Reactor {
-    fn drop(&mut self) {
-        unsafe { libc::close(self.epoll_fd) };
+impl Drop for Reactor{
+    fn drop(&mut self){
+        unsafe{
+            libc::close(self.epoll_fd);
+        }
     }
 }
