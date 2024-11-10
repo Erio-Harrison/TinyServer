@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::io::{Error, Result};
 use std::os::unix::io::RawFd;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 const MAX_EVENTS : usize = 10;
 
 pub struct Reactor{
     epoll_fd : RawFd,
-    running : AtomicBool,
+    running: Arc<AtomicBool>,
     handlers: HashMap<RawFd, Box<dyn FnMut(u32) + Send>>,
 }
 
@@ -21,7 +22,7 @@ impl Reactor{
         Ok(
             Reactor { 
             epoll_fd, 
-            running: AtomicBool::new(false), 
+            running: Arc::new(AtomicBool::new(false)), 
             handlers:HashMap::new() 
             }
         )
@@ -94,19 +95,19 @@ impl Reactor{
 
     pub fn run(&mut self) -> Result<()> {
         let mut events = vec![
-            libc::epoll_event { events: 0, u64: 0};
+            libc::epoll_event { events: 0, u64: 0 };
             MAX_EVENTS
         ];
 
-        self.running.store(true,Ordering::SeqCst);
+        self.running.store(true, Ordering::SeqCst);
 
         while self.running.load(Ordering::SeqCst) {
             let nfds = unsafe {
-                libc:: epoll_wait(
+                libc::epoll_wait(
                     self.epoll_fd,
                     events.as_mut_ptr(),
                     MAX_EVENTS as i32,
-                    -1,
+                    100, 
                 )
             };
 
@@ -120,7 +121,7 @@ impl Reactor{
 
             for n in 0..nfds {
                 let fd = events[n as usize].u64 as RawFd;
-                if let Some(handler) = self.handlers.get_mut(&fd){
+                if let Some(handler) = self.handlers.get_mut(&fd) {
                     handler(events[n as usize].events);
                 }
             }
@@ -129,17 +130,37 @@ impl Reactor{
     }
 
     pub fn stop(&self) {
+        println!("Reactor stopping...");
         self.running.store(false, Ordering::SeqCst);
     }
 
     pub fn get_epoll_fd(&self) -> RawFd {
         self.epoll_fd
+    }
+    
+    pub fn share_running_state(&mut self, running: Arc<AtomicBool>) {
+        self.running = running;
     }  
 }
 
-impl Drop for Reactor{
-    fn drop(&mut self){
-        unsafe{
+impl Clone for Reactor {
+    fn clone(&self) -> Self {
+        let epoll_fd = unsafe { libc::epoll_create1(0) };
+        if epoll_fd == -1 {
+            panic!("Failed to create epoll instance in clone");
+        }
+
+        Self {
+            epoll_fd,
+            running: Arc::clone(&self.running),
+            handlers: HashMap::new(),
+        }
+    }
+}
+
+impl Drop for Reactor {
+    fn drop(&mut self) {
+        unsafe {
             libc::close(self.epoll_fd);
         }
     }
