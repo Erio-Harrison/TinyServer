@@ -12,6 +12,7 @@ struct ServerState {
     receive_handler: Option<Box<dyn FnMut(RawFd, &[u8], usize) + Send>>,
 }
 
+#[allow(dead_code)]
 pub struct TcpServer {
     state: Arc<Mutex<ServerState>>,
     ip: String,
@@ -191,6 +192,12 @@ impl TcpServer {
             }
             Ok(sent as usize)
         }
+    }
+
+    pub fn get_reactor(&self) -> Reactor {
+        let mut reactor = self.state.lock().unwrap().reactor.clone();
+        reactor.share_running_state(Arc::clone(&self.running));
+        reactor
     }
 }
 
