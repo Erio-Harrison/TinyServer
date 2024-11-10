@@ -138,6 +138,7 @@ impl TcpServer {
         self.running.store(true, Ordering::SeqCst);
         let state = Arc::clone(&self.state);
         let server_fd = self.server_fd;
+        let running = Arc::clone(&self.running);
 
         self.state.lock().unwrap().reactor.add_handler(
             self.server_fd,
@@ -149,7 +150,7 @@ impl TcpServer {
                         ip: String::new(),
                         port: 0,
                         server_fd,
-                        running: Arc::new(AtomicBool::new(true)),
+                        running: running.clone(),
                     };
                     if let Err(e) = server.accept_connection() {
                         eprintln!("Accept error happened: {}", e);
@@ -162,8 +163,11 @@ impl TcpServer {
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
+        println!("TcpServer stopping...");
         self.running.store(false, Ordering::SeqCst);
         self.state.lock().unwrap().reactor.remove_handler(self.server_fd)?;
+        self.state.lock().unwrap().reactor.stop();
+        println!("TcpServer stopped");
         Ok(())
     }
 
