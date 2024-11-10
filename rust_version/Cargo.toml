@@ -31,3 +31,10 @@ overflow-checks = false
 lto = true
 codegen-units = 1
 panic = 'unwind'
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "tcp_server_throughput"
+harness = false
