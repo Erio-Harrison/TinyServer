@@ -1,59 +1,206 @@
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::ptr;
+use std::ptr::NonNull;
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
+use std::mem::align_of;
 
-    #[test]
-    fn test_allocate() {
-        let pool = MemoryPool::new(32, 10); // 每个块32字节，初始分配10个块
+#[test]
+fn test_memory_pool_basic() {
+    let pool = MemoryPool::new(64, 10);
+    
+    // 分配一个块
+    let ptr1 = pool.allocate();
+    
+    // 确保指针非空且对齐正确
+    assert!(!ptr1.as_ptr().is_null());
+    assert_eq!(ptr1.as_ptr() as usize % align_of::<usize>(), 0);
+    
+    // 分配第二个块
+    let ptr2 = pool.allocate();
+    assert!(!ptr2.as_ptr().is_null());
+    assert_ne!(ptr1, ptr2);
+    
+    // 释放并重新分配
+    pool.deallocate(ptr1);
+    let ptr3 = pool.allocate();
+    // 应该得到刚才释放的块
+    assert_eq!(ptr1, ptr3);
+}
+
+#[test]
+fn test_memory_pool_capacity() {
+    let initial_blocks = 2;
+    let pool = MemoryPool::new(32, initial_blocks);
+    
+    // 分配所有初始块
+    let mut ptrs = Vec::new();
+    for _ in 0..initial_blocks {
+        ptrs.push(pool.allocate());
+    }
+    
+    // 下一次分配应触发新chunk分配
+    let ptr = pool.allocate();
+    assert!(!ptr.as_ptr().is_null());
+    
+    // 清理
+    for ptr in ptrs {
+        pool.deallocate(ptr);
+    }
+    pool.deallocate(ptr);
+}
+
+#[test]
+fn test_memory_pool_concurrent() {
+    let pool = Arc::new(MemoryPool::new(128, 50));
+    let mut handles = vec![];
+    let iterations = 1000;
+    
+    for _ in 0..8 {
+        let pool_clone = pool.clone();
+        let handle = thread::spawn(move || {
+            let mut ptrs = Vec::new();
+            for _ in 0..iterations {
+                // 分配一些块
+                for _ in 0..5 {
+                    ptrs.push(pool_clone.allocate());
+                }
+                // 释放一些块
+                for _ in 0..3 {
+                    if let Some(ptr) = ptrs.pop() {
+                        pool_clone.deallocate(ptr);
+                    }
+                }
+                thread::sleep(Duration::from_micros(1));
+            }
+            // 清理剩余的块
+            for ptr in ptrs {
+                pool_clone.deallocate(ptr);
+            }
+        });
+        handles.push(handle);
+    }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
+
+#[test]
+fn test_memory_pool_alignment() {
+    let align = align_of::<usize>();
+    let pool = MemoryPool::new(align * 4, 5);
+    
+    // 检查多个分配的对齐情况
+    for _ in 0..10 {
         let ptr = pool.allocate();
-        assert!(!ptr.as_ptr().is_null()); // 确保分配的内存非空
+        assert_eq!(ptr.as_ptr() as usize % align, 0);
+        pool.deallocate(ptr);
     }
+}
 
-    #[test]
-    fn test_deallocate_and_reuse() {
-        let pool = MemoryPool::new(32, 10);
-        let ptr1 = pool.allocate();
-        let ptr2 = pool.allocate();
-        
-        assert!(ptr1 != ptr2); // 确保分配的两个内存地址不同
-        
-        pool.deallocate(ptr1);
-        let ptr3 = pool.allocate();
-        
-        assert_eq!(ptr1, ptr3); // 确保释放的内存块可以被重新分配
+#[test]
+fn test_memory_pool_stress() {
+    let pool = Arc::new(MemoryPool::new(256, 10));
+    let mut handles = vec![];
+    
+    // 创建多个线程，反复进行分配和释放
+    for _ in 0..16 {
+        let pool_clone = pool.clone();
+        let handle = thread::spawn(move || {
+            let mut ptrs = Vec::new();
+            for _ in 0..100 {
+                match rand::random::<bool>() {
+                    true => {
+                        ptrs.push(pool_clone.allocate());
+                    }
+                    false => {
+                        if let Some(ptr) = ptrs.pop() {
+                            pool_clone.deallocate(ptr);
+                        }
+                    }
+                }
+            }
+            // 清理剩余的分配
+            for ptr in ptrs {
+                pool_clone.deallocate(ptr);
+            }
+        });
+        handles.push(handle);
     }
+    
+    for handle in handles {
+        handle.join().unwrap();
+    }
+}
 
-    #[test]
-    fn test_multiple_allocations() {
-        let pool = MemoryPool::new(32, 5); // 每个块32字节，初始分配5个块
-        let mut allocated = Vec::new();
-
-        for _ in 0..5 {
-            let ptr = pool.allocate();
-            allocated.push(ptr);
+#[test]
+fn test_memory_pool_different_sizes() {
+    // 测试不同大小的块
+    let sizes = [16, 32, 64, 128, 256, 512, 1024];
+    for &size in &sizes {
+        let pool = MemoryPool::new(size, 5);
+        let mut ptrs = Vec::new();
+        
+        // 分配一些块
+        for _ in 0..10 {
+            ptrs.push(pool.allocate());
         }
-
-        // 所有初始块应该已分配完
-        assert!(allocated.len() == 5);
-
-        // 释放一个块
-        pool.deallocate(allocated.pop().unwrap());
-
-        // 再次分配一个块，应该不会触发新的内存分配
-        let ptr = pool.allocate();
-        assert!(allocated.iter().all(|&p| p != ptr));
+        
+        // 验证所有指针都是有效的且不重叠
+        for i in 0..ptrs.len() {
+            for j in i+1..ptrs.len() {
+                let start1 = ptrs[i].as_ptr() as usize;
+                let end1 = start1 + size;
+                let start2 = ptrs[j].as_ptr() as usize;
+                let end2 = start2 + size;
+                assert!(end1 <= start2 || end2 <= start1);
+            }
+        }
+        
+        // 清理
+        for ptr in ptrs {
+            pool.deallocate(ptr);
+        }
     }
+}
 
-    #[test]
-    fn test_expand_pool() {
-        let pool = MemoryPool::new(32, 2); // 每个块32字节，初始分配2个块
-        let ptr1 = pool.allocate();
-        let ptr2 = pool.allocate();
-
-        // 初始块已分配完，再次分配应该触发池扩展
-        let ptr3 = pool.allocate();
-        assert!(!ptr3.as_ptr().is_null()); // 确保分配的内存非空
-        assert!(ptr1 != ptr3 && ptr2 != ptr3); // 确保新分配的块不同
+#[test]
+fn test_memory_pool_reuse() {
+    let pool = MemoryPool::new(64, 5);
+    let mut used_ptrs = Vec::new();
+    let mut freed_ptrs = Vec::new();
+    
+    // 分配一些块
+    for _ in 0..10 {
+        used_ptrs.push(pool.allocate());
     }
+    
+    // 释放一半的块
+    for _ in 0..5 {
+        if let Some(ptr) = used_ptrs.pop() {
+            freed_ptrs.push(ptr);
+            pool.deallocate(ptr);
+        }
+    }
+    
+    // 重新分配，应该得到之前释放的块
+    for expected_ptr in freed_ptrs {
+        let new_ptr = pool.allocate();
+        assert_eq!(expected_ptr, new_ptr);
+    }
+    
+    // 清理剩余的块
+    for ptr in used_ptrs {
+        pool.deallocate(ptr);
+    }
+}
+
+#[test]
+#[should_panic]
+fn test_memory_pool_double_free() {
+    let pool = MemoryPool::new(32, 5);
+    let ptr = pool.allocate();
+    pool.deallocate(ptr);
+    // 这应该会导致panic
+    pool.deallocate(ptr);
 }
