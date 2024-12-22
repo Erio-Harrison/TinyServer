@@ -2,6 +2,8 @@
 
 会开发cpp（已完成）和rust两个版本，附上相应的tutorial
 
+[![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white)](https://discord.gg/8jCKt9rTtN)
+
 # 项目特点
 
 - 底层使用 Epoll + LT 模式的 I/O 复用模型，并且结合非阻塞 I/O 实现主从 Reactor 模型
