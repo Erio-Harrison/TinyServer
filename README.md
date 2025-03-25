@@ -1,6 +1,6 @@
 # TinyServer
 
-会开发cpp（已完成）和rust两个版本，附上相应的tutorial
+会开发cpp（已完成）和rust（部分完成，剩下的计划改为学生作业项目）两个版本，附上相应的tutorial
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-5865F2?logo=discord&logoColor=white)](https://discord.gg/8jCKt9rTtN)
 
